@@ -48,18 +48,19 @@ In paper authors have performed 4x super resolution. For this you would need to 
 ### Download pretrained
 
 Open
-[Release v1.0](https://github.com/IMPLabUniPr/swin2-mose/releases/tag/v1.0)
-page and download .pt (pretrained) and .pkl (results) file.
+[Pretrained Model](https://drive.google.com/file/d/1CLGX83VMxGHINp__08E1kWVXGd6K3WDi/view?usp=sharing)
+page and download LR-HR-OUR21K-13B4xv1.zip file.
 
 Unzip them inside the output directory, obtaining the following directories
 structure:
 
+
 ```
-output2/sen2venus_exp4_2x_v5/
+output/LR-HR-OUR21K-13B4xv1/
 ├── checkpoints
-│   └── model-70.pt
+│   └── model-100.pt
 └── eval
-    └── results-70.pt
+    └── results-100.pt
 ```
 
 ### Swin2-MoSE best configuration
