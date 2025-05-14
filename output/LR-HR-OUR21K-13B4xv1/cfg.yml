@@ -1,0 +1,230 @@
+!!python/object/new:easydict.EasyDict
+dictitems:
+  __base__: sen2venus_4x_s2m.yml
+  batch_size: 8
+  config: cfgs\swin2_mose\super_res_ms.yml
+  dataset: !!python/object/new:easydict.EasyDict &id019
+    dictitems:
+      collate_fn: mods.v6.collate_fn
+      denorm: mods.v6.uncollate_fn
+      hr_name: null
+      load_dataset: datasets.oli2msi.load_dataset
+      lr_name: null
+      printable: mods.v6.printable
+      root_path: /sr_data2/train_21k
+      stats: !!python/object/new:easydict.EasyDict &id011
+        dictitems:
+          tensor_05m_b5b6b7b8a: !!python/object/new:easydict.EasyDict &id009
+            dictitems:
+              max: &id001
+                - 20197.0
+                - 16498.0
+                - 16674.0
+                - 21622.0
+              mean: &id002
+                - 1182.8475341796875
+                - 2155.208251953125
+                - 2507.487060546875
+                - 2800.94140625
+              min: &id003
+                - -8687.0
+                - -3340.0
+                - -2245.0
+                - -5048.0
+              std: &id004
+                - 594.6590576171875
+                - 643.8070068359375
+                - 777.8865356445312
+                - 829.2948608398438
+            state:
+              max: *id001
+              mean: *id002
+              min: *id003
+              std: *id004
+          tensor_20m_b5b6b7b8a: !!python/object/new:easydict.EasyDict &id010
+            dictitems:
+              max: &id005
+                - 13375.0
+                - 15898.0
+                - 15551.0
+                - 15079.0
+              mean: &id006
+                - 1180.6920166015625
+                - 2149.5302734375
+                - 2500.98779296875
+                - 2794.01220703125
+              min: &id007
+                - -446.0
+                - -295.0
+                - -340.0
+                - -551.0
+              std: &id008
+                - 592.2827758789062
+                - 639.0105590820312
+                - 769.7623291015625
+                - 819.83349609375
+            state:
+              max: *id005
+              mean: *id006
+              min: *id007
+              std: *id008
+          use_minmax: true
+        state:
+          tensor_05m_b5b6b7b8a: *id009
+          tensor_20m_b5b6b7b8a: *id010
+          use_minmax: true
+    state:
+      collate_fn: mods.v6.collate_fn
+      denorm: mods.v6.uncollate_fn
+      hr_name: null
+      load_dataset: datasets.oli2msi.load_dataset
+      lr_name: null
+      printable: mods.v6.printable
+      root_path: /sr_data2/train_21k
+      stats: *id011
+  dpi: 2400
+  epoch: 100
+  epochs: 200
+  eval_method: null
+  losses: !!python/object/new:easydict.EasyDict &id020
+    dictitems:
+      weights: !!python/object/new:easydict.EasyDict &id012
+        dictitems:
+          cc: 1.0
+          moe: 0.2
+          ssim: 1.0
+        state:
+          cc: 1.0
+          moe: 0.2
+          ssim: 1.0
+      with_cc_criterion: true
+      with_pixel_criterion: false
+      with_ssim_criterion: true
+    state:
+      weights: *id012
+      with_cc_criterion: true
+      with_pixel_criterion: false
+      with_ssim_criterion: true
+  mean_std: mods.v3.get_mean_std
+  metrics: !!python/object/new:easydict.EasyDict &id021
+    dictitems:
+      only_test_y_channel: false
+      upscale_factor: 4
+    state:
+      only_test_y_channel: false
+      upscale_factor: 4
+  num_images: 4000
+  num_workers: 0
+  optim: !!python/object/new:easydict.EasyDict &id022
+    dictitems:
+      learning_rate: 0.0001
+      model_betas: &id013
+        - 0.9
+        - 0.999
+      model_eps: 1.0e-08
+      model_weight_decay: 0
+    state:
+      learning_rate: 0.0001
+      model_betas: *id013
+      model_eps: 1.0e-08
+      model_weight_decay: 0
+  output: output/LR-HR-OUR21K-13B4xv1
+  phase: vis
+  repeat_times: 1000
+  seed: 123
+  snapshot_interval: 1
+  super_res: !!python/object/new:easydict.EasyDict &id023
+    dictitems:
+      model: !!python/object/new:easydict.EasyDict &id017
+        dictitems:
+          MoE_config: !!python/object/new:easydict.EasyDict &id014
+            dictitems:
+              k: 2
+              num_experts: 8
+              with_noise: false
+              with_smart_merger: v1
+            state:
+              k: 2
+              num_experts: 8
+              with_noise: false
+              with_smart_merger: v1
+          depths: &id015
+            - 6
+            - 6
+            - 6
+            - 6
+          embed_dim: 90
+          img_range: 1.0
+          img_size: 64
+          in_chans: 13
+          mlp_ratio: 1
+          num_heads: &id016
+            - 6
+            - 6
+            - 6
+            - 6
+          resi_connection: 1conv
+          upsampler: pixelshuffledirect
+          upscale: 4
+          use_cpb_bias: false
+          use_lepe: true
+          use_rpe_bias: true
+          window_size: 16
+        state:
+          MoE_config: *id014
+          depths: *id015
+          embed_dim: 90
+          img_range: 1.0
+          img_size: 64
+          in_chans: 13
+          mlp_ratio: 1
+          num_heads: *id016
+          resi_connection: 1conv
+          upsampler: pixelshuffledirect
+          upscale: 4
+          use_cpb_bias: false
+          use_lepe: true
+          use_rpe_bias: true
+          window_size: 16
+      version: v2
+    state:
+      model: *id017
+      version: v2
+  train: super_res.training.train
+  visualize: !!python/object/new:easydict.EasyDict &id024
+    dictitems:
+      checkpoint: chk_loader.load_state_dict_model_only
+      input_shape: &id018
+        - 4
+        - 64
+        - 64
+      model: super_res.model.build_model
+    state:
+      checkpoint: chk_loader.load_state_dict_model_only
+      input_shape: *id018
+      model: super_res.model.build_model
+  warm_times: 10
+state:
+  __base__: sen2venus_4x_s2m.yml
+  batch_size: 8
+  config: cfgs\swin2_mose\super_res_ms.yml
+  dataset: *id019
+  dpi: 2400
+  epoch: 100
+  epochs: 200
+  eval_method: null
+  losses: *id020
+  mean_std: mods.v3.get_mean_std
+  metrics: *id021
+  num_images: 4000
+  num_workers: 0
+  optim: *id022
+  output: output\LR-HR-OUR21K-13B4xv1
+  phase: vis
+  repeat_times: 1000
+  seed: 123
+  snapshot_interval: 1
+  super_res: *id023
+  train: super_res.training.train
+  visualize: *id024
+  warm_times: 10
