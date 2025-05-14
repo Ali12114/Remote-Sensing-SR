@@ -1,180 +1,49 @@
-## [Swin2-MoSE: A New Single Image Super-Resolution Model for Remote Sensing](https://arxiv.org/abs/2404.18924)
+## [Enhanced Swin2SR: RGB SUPER-RESOLUTION FOR MULTISPECTRAL REMOTE SENSING IMAGES
 
-Official PyTorch implementation of **Swin2-MoSE**.
+Official PyTorch implementation of **Enhanced Swin2SR**.
 
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/swin2-mose-a-new-single-image-super/multispectral-image-super-resolution-on-1)](https://paperswithcode.com/sota/multispectral-image-super-resolution-on-1?p=swin2-mose-a-new-single-image-super)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/swin2-mose-a-new-single-image-super/multispectral-image-super-resolution-on)](https://paperswithcode.com/sota/multispectral-image-super-resolution-on?p=swin2-mose-a-new-single-image-super)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/swin2-mose-a-new-single-image-super/multispectral-image-super-resolution-on-3)](https://paperswithcode.com/sota/multispectral-image-super-resolution-on-3?p=swin2-mose-a-new-single-image-super)
-
-In this paper, we propose **Swin2-MoSE** model, an enhanced version of Swin2SR for
+In this paper, we propose **Enhanced Swin2SR** model, an enhanced version of Swin2SR for
 Single-Image Super-Resolution for Remote Sensing.
-
-<img src="images/fig1.png" width="800" height="auto" alt="Swin2-MoSE Aarchitecture">
-
-<img src="images/fig2.png" width="800" height="auto" alt="Swin2-MoSE MoE-SM">
-
-<img src="images/fig3.png" width="800" height="auto" alt="Swin2-MoSE Positional Encoding">
-
-Authors: Leonardo Rossi, Vittorio Bernuzzi, Tomaso Fontanini,
-         Massimo Bertozzi, Andrea Prati.
-
-[IMP Lab](http://implab.ce.unipr.it/) -
-Dipartimento di Ingegneria e Architettura
-
-University of Parma, Italy
-
-
-## Abstract
-
-Due to the limitations of current optical and sensor technologies and the high cost of updating them, the spectral and spatial resolution of satellites may not always meet desired requirements.
-For these reasons, Remote-Sensing Single-Image Super-Resolution (RS-SISR) techniques have gained significant interest.
-
-In this paper, we propose Swin2-MoSE model, an enhanced version of Swin2SR.
-
-Our model introduces MoE-SM, an enhanced Mixture-of-Experts (MoE) to replace the Feed-Forward inside all Transformer block.
-MoE-SM is designed with Smart-Merger, and new layer for merging the output of individual experts, and with a new way to split the work between experts, defining a new per-example strategy instead of the commonly used per-token one.
-
-Furthermore, we analyze how positional encodings interact with each other, demonstrating that per-channel bias and per-head bias can positively cooperate.
-
-Finally, we propose to use a combination of Normalized-Cross-Correlation (NCC) and Structural Similarity Index Measure (SSIM) losses, to avoid typical MSE loss limitations.
-
-Experimental results demonstrate that Swin2-MoSE outperforms SOTA by up to 0.377 ~ 0.958 dB (PSNR) on task of 2x, 3x and 4x resolution-upscaling (Sen2Venus and OLI2MSI datasets).
-We show the efficacy of Swin2-MoSE, applying it to a semantic segmentation task (SeasoNet dataset).
-
 
 ## Usage
 
-###  Installation
-```bash
-$ git clone https://github.com/IMPLabUniPr/swin2-mose/tree/official_code
-$ cd swin2-mose
-$ conda env create -n swin2_mose_env --file environment.yml
-$ conda activate swin2_mose_env
-```
-
-### Prepare Sen2Venus dataset
-
-1) After you downloaded the files from
-  [Sen2Venus](https://zenodo.org/records/6514159) official website, unzip them
-  inside the `./datasets/sen2venus_original` directory.
-
-2) Run the script [split.py](https://github.com/IMPLabUniPr/swin2-mose/tree/official_code/scripts/sen2venus/split.py) to split the dataset in training (~80%) and
-   test (~20%):
+### Installation
 
 ```bash
-python scripts/sen2venus/split.py --input ./datasets/sen2venus_original --output ./data/sen2venus
+$ git clone https://github.com/Ali12114/Remote-Sensing-SR.git
+$ conda env create -n enhanced_swin2 --file environment.yml
+Or check the requirements.txt file for all dependencies
+$ conda activate enhanced_swin2
 ```
 
-After the successfull execution of the script, you will find `train.csv` and
-`test.csv` files inside the `./data/sen2venus`.
+### DOP20 and S2 Dataset Preparation
 
-Note: if you want to skip this run and use our `train.csv` and `test.csv`
-files directly, you can download them from
-[Release v1.0](https://github.com/IMPLabUniPr/swin2-mose/releases/tag/v1.0)
-page.
-
-3) Run the script [rebuild.py](https://github.com/IMPLabUniPr/swin2-mose/tree/official_code/scripts/sen2venus/rebuild.py) to rebuild the dataset in a compatible
-  format:
-
-```bash
-python scripts/sen2venus/rebuild.py --data ./datasets/sen2venus_original --output ./data/sen2venus
-```
-
-If everything went well, you will have the following files structure:
-
-```
-data/sen2venus
-├── test
-│   ├── 000000_ALSACE_2018-02-14.pt
-│   ├── 000001_ALSACE_2018-02-14.pt
-|   ...
-├── test.csv
-├── train
-│   ├── 000000_ALSACE_2018-02-14.pt
-│   ├── 000001_ALSACE_2018-02-14.pt
-|   ...
-└── train.csv
-```
-
-Note about Sen2venus: we found a small error in file name convention!
-
-On paper, authors wrote for `4x` files, the following:
-
-```
-{id}_05m_b5b6b7b8a.pt   -   5m patches (256×256 pix.) for S2 B5, B6, B7 and B8A (from VENµS)
-{id}_20m_b5b6b7b8a.pt   -   20m patches (64×64 pix.) for S2 B5, B6, B7 and B8A (from Sentinel-2)
-```
-
-But, we found the following name conventions:
-
-```
-ALSACE_C_32ULU_2018-02-14_05m_b4b5b6b8a.pt
-ALSACE_C_32ULU_2018-02-14_20m_b4b5b6b8a.pt
-```
-
-### Prepare OLI2MSI dataset
-
-Download from the
-[OLI2MSI](https://github.com/wjwjww/OLI2MSI) official website and unzip it
-inside the `./data/oli2msi` directory.
+This repository contains all the necessary scripts and instructions for downloading, preprocessing, and preparing the dataset. [Dataset Repository](https://github.com/fabianstahl/SR_Double_Dataset)
+After downloading the DOP20 and S2 dataset, split it into train and test set. In paper authors have 80/20 split for train/test.
 
 If everything went well, you will have the following files structure:
 
 ```
 data/oli2msi
 ├── test_hr
-│   ├── L8_126038_20190923_S2B_20190923_T49RCQ_N0071.TIF
-│   ├── L8_126038_20190923_S2B_20190923_T49RCQ_N0108.TIF
+│   ├── dop20_32_451_5627_1_he.jpg
+│   ├── dop20_32_460_5493_1_he.jpg
 |   ...
 ├── test_lr
-│   ├── L8_126038_20190923_S2B_20190923_T49RCQ_N0071.TIF
-│   ├── L8_126038_20190923_S2B_20190923_T49RCQ_N0108.TIF
+│   ├── dop20_32_451_5627_1_he.npy
+│   ├── dop20_32_460_5493_1_he.npy
 |   ...
 ├── train_hr
-│   ├── L8_126038_20190923_S2B_20190923_T49RBQ_N0008.TIF
-│   ├── L8_126038_20190923_S2B_20190923_T49RBQ_N0015.TIF
+│   ├── dop20_32_451_5556_1_he.jpg
+│   ├── dop20_32_459_5566_1_he.jpg
 |   ...
 └── train_lr
-    ├── L8_126038_20190923_S2B_20190923_T49RBQ_N0008.TIF
-    ├── L8_126038_20190923_S2B_20190923_T49RBQ_N0015.TIF
+    ├── dop20_32_451_5556_1_he.npy
+    ├── dop20_32_459_5566_1_he.npy
     ...
 ```
 
-### Prepare SeasoNet dataset
-
-Download from the [SeasoNet](https://zenodo.org/records/5850307) official
-website and unzip it inside the `./data/SeasoNet/data` directory.
-
-If everything went well, you will have the following files structure:
-
-```
-data/SeasoNet
-└── data
-    ├── fall
-    │   ├── grid1
-    │   └── grid2
-    ├── meta.csv
-    ├── snow
-    │   ├── grid1
-    │   └── grid2
-    ├── splits
-    │   ├── test.csv
-    │   ├── train.csv
-    │   └── val.csv
-    ├── spring
-    │   ├── grid1
-    │   └── grid2
-    ├── summer
-    │   ├── grid1
-    │   └── grid2
-    └── winter
-        ├── grid1
-        └── grid2
-```
-
-Note about SeasoNet: SeasoNet could be easily downloaded by
-[TorchGeo](https://torchgeo.readthedocs.io/en/stable/api/datasets.html#seasonet)
-class, specifying the root directory `./data/SeasoNet/data/`.
+In paper authors have performed 4x super resolution. For this you would need to resize DOP20 images before training or inference. For that resize all of the DOP20 images to 400x400 using bicubic interpolation.
 
 ### Download pretrained
 
@@ -196,135 +65,40 @@ output2/sen2venus_exp4_2x_v5/
 ### Swin2-MoSE best configuration
 
 ```bash
-# Sen2Venus 2x
-CONFIG_FILE=cfgs/swin2_mose/sen2venus_2x_s2m.yml
-# OLI2MSI 3x
-CONFIG_FILE=cfgs/swin2_mose/oli2msi_3x_s2m.yml
-# Sen2Venus 4x
-CONFIG_FILE=cfgs/swin2_mose/sen2venus_4x_s2m.yml
+# S2 4x
+CONFIG_FILE=cfgs/enhanced_swin2/super_res_ms.yml
 ```
 
 ### Train
 
 ```bash
-python src/main.py --phase train --config $CONFIG_FILE --output $OUT_DIR --epochs ${EPOCH} --epoch -1
-python src/main_ssegm.py --phase train --config $CONFIG_FILE --output $OUT_DIR --epochs ${EPOCH} --epoch -1
+CUDA_VISIBLE_DEVICES=$DEVICE_ID python src/main.py --phase train --config $CONFIG_FILE --output $OUT_DIR --epochs ${EPOCH} --epoch -1
 ```
 
 ### Validate
 
 ```bash
 python src/main.py --phase test --config $CONFIG_FILE --output $OUT_DIR --batch_size 32 --epoch ${EPOCH}
-python src/main.py --phase test --config $CONFIG_FILE --batch_size 32 --eval_method bicubic
 ```
 
 ### Show results
 
 ```
 python src/main.py --phase vis --config $CONFIG_FILE --output $OUT_DIR --num_images 3 --epoch ${EPOCH}
-python src/main.py --phase vis --config $CONFIG_FILE --output output/sen2venus_4x_bicubic --num_images 3 --eval_method bicubic
-python src/main.py --phase vis --config $CONFIG_FILE --output output/sen2venus_4x_bicubic --num_images 3 --eval_method bicubic --dpi 1200
-python src/main_ssegm.py --phase vis --config $CONFIG_FILE --output $OUT_DIR --num_images 2 --epoch ${EPOCH}
-python src/main_ssegm.py --phase vis --config $CONFIG_FILE --output $OUT_DIR --num_images 2 --epoch ${EPOCH} --hide_sr
 ```
 
-### Compute mean/std
-
-```
-python src/main.py --phase mean_std --config $CONFIG_FILE
-python src/main_ssegm.py --phase mean_std --config $CONFIG_FILE
-```
-
-### Measure execution average time
-
-```
-python src/main.py --phase avg_time --config $CONFIG_FILE --repeat_times 1000 --warm_times 20 --batch_size 8
-```
-
-## Results
-
-### Table 1
-
-Ablation study on loss usage.
-
-| # | Losses   ||| Performace            ||| Conf |
-| # | NCC | SSIM | MSE | NCC    | SSIM   | PSNR    | |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| 1 | x   |      |     | 0.9550 | 0.5804 | 16.4503 | [conf](cfgs/sen2venus_exp1_v1.yml) |
-| 2 |     | x    |     | 0.9565 | 0.9847 | 45.5427 | [conf](cfgs/sen2venus_exp1_v2.yml) |
-| 3 |     |      | x   | 0.9546 | 0.9828 | 45.4759 | [conf](cfgs/sen2venus_exp1_v3.yml) |
-| 4 | x   | x    |     | 0.9572 | 0.9841 | 45.6986 | [conf](cfgs/sen2venus_exp1_v4.yml) |
-| 5 | x   |      | x   | 0.9549 | 0.9828 | 45.5163 | [conf](cfgs/sen2venus_exp1_v5.yml) |
-| 6 | x   | x    | x   | 0.9555 | 0.9833 | 45.5542 | [conf](cfgs/sen2venus_exp1_v6.yml) |
-
-### Table 2
-
-Ablation study on positional encoding.
-
-| # | Positional Encoding ||| Performace            || Conf |
-| # | RPE | log CPB | LePE | SSIM   | PSNR    | |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| 1 | x   |         |      | 0.9841 | 45.5855 | [conf](cfgs/sen2venus_exp2_v1.yml) |
-| 2 |     | x       |      | 0.9841 | 45.6986 | [conf](cfgs/sen2venus_exp2_v2.yml) |
-| 3 |     |         | x    | 0.9843 | 45.7278 | [conf](cfgs/sen2venus_exp2_v3.yml) |
-| 4 |     | x       | x    | 0.9845 | 45.8046 | [conf](cfgs/sen2venus_exp2_v4.yml) |
-| 5 | x   |         | x    | 0.9847 | 45.8539 | [conf](cfgs/sen2venus_exp2_v5.yml) |
-| 6 | x   | x       |      | 0.9843 | 45.6945 | [conf](cfgs/sen2venus_exp2_v6.yml) |
-| 7 | x   | x       | x    | 0.9846 | 45.8185 | [conf](cfgs/sen2venus_exp2_v7.yml) |
-
-### Table 3
-
-Ablation study on positional encoding.
-
-` | # |         |    | MLP #Params    || Performace            || Latency | Conf |`
-| # | Arch    | SM | APC    | SPC    | SSIM      | PSNR       | (s)     |      |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| 1 | MLP     |    | 32’670 |  32’670 | 0.9847 | 45.8539 | 0.194 | [conf](cfgs/sen2venus_exp3_v1.yml) |
-| 2 | MoE 8/2 |    | 32’760 | 132’480 | 0.9845 | 45.8647 | 0.202 | [conf](cfgs/sen2venus_exp3_v2.yml) |
-| 3 | MoE 8/2 | x  | 32’779 | 132’499 | 0.9849 | 45.9272 | 0.212 | [conf](cfgs/sen2venus_exp3_v3.yml) |
-
-### Table 4
-
-Quantitative comparison with SOTA models on Sen2Veµs and OLI2MS datasets.
-
-| # | Model             |  Sen2Venus 2x   || OLI2MSI 3x      || Sen2Venus 4x    || Conf |||
-| # |                   | SSIM   | PSNR    | SSIM   | PSNR    | SSIM   | PSNR    | 2x | 3x | 4x |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| 1 | Bicubic           | 0.9883 | 45.5588 | 0.9768 | 42.1835 | 0.9674 | 42.0499 |    |    |    |
-| 2 | [SwinIR](https://openaccess.thecvf.com/content/ICCV2021W/AIM/html/Liang_SwinIR_Image_Restoration_Using_Swin_Transformer_ICCVW_2021_paper.html)            | 0.9938 | 48.7064 | 0.9860 | 43.7482 | 0.9825 | 45.3460 | [conf](cfgs/sen2venus_exp4_2x_v2.yml) | [conf](cfgs/oli2msi_exp4_3x_v2.yml) | [conf](cfgs/sen2venus_exp4_4x_v2.yml) |
-| 3 | [Swinfir](https://arxiv.org/abs/2208.11247)           | 0.9940 | 48.8532 | 0.9863 | 44.4829 | 0.9830 | 45.5500 | [conf](cfgs/sen2venus_exp4_2x_v3.yml) | [conf](cfgs/oli2msi_exp4_3x_v3.yml) | [conf](cfgs/sen2venus_exp4_4x_v3.yml) |
-| 4 | [Swin2SR](https://link.springer.com/chapter/10.1007/978-3-031-25063-7_42)           | 0.9942 | 49.0467 | 0.9881 | 44.9614 | 0.9828 | 45.4759 | [conf](cfgs/sen2venus_exp4_2x_v4.yml) | [conf](cfgs/oli2msi_exp4_3x_v4.yml) | [conf](cfgs/sen2venus_exp4_4x_v4.yml) |
-| 5 | Swin2-MoSE (ours) | 0.9948 | 49.4784 | 0.9912 | 45.9194 | 0.9849 | 45.9272 | [conf](cfgs/sen2venus_exp4_2x_v5.yml) | [conf](cfgs/oli2msi_exp4_3x_v5.yml) | [conf](cfgs/sen2venus_exp4_4x_v5.yml) |
-
-
-### Figure 11
-
-Results for the Semantic Segmentation task on SeasoNet dataset.
-
-| # | Model             |  Conf |
-|:---:|:---:|:---:|
-| 1 | FarSeg            | [conf](cfgs/seasonet_exp5_v1.yml) |
-| 2 | FarSeg++          | [conf](cfgs/seasonet_exp5_v2.yml) |
-| 3 | FarSeg+S2MFE      | [conf](cfgs/seasonet_exp5_v3.yml) |
+[Swin2SR](https://link.springer.com/chapter/10.1007/978-3-031-25063-7_42)  
+[Transformer for SISR](https://github.com/luissen/ESRT)
+[WAT](https://github.com/mandalinadagi/Wavelettention)
 
 ## License
 
 See [GPL v2](./LICENSE) License.
 
-## Acknowledgement
-
-Project ECS\_00000033\_ECOSISTER funded under the National Recovery and Resilience Plan (NRRP), Mission 4
-Component 2 Investment 1.5 - funded by the European Union – NextGenerationEU.
-This research benefits from the HPC (High Performance Computing) facility of the University of Parma, Italy.
-
 ## Citation
+
 If you find our work useful in your research, please cite:
 
 ```
-@article{rossi2024swin2,
-  title={Swin2-MoSE: A New Single Image Super-Resolution Model for Remote Sensing},
-  author={Rossi, Leonardo and Bernuzzi, Vittorio and Fontanini, Tomaso and Bertozzi, Massimo and Prati, Andrea},
-  journal={arXiv preprint arXiv:2404.18924},
-  year={2024}
-}
+
 ```
