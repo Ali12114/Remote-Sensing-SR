@@ -28,6 +28,8 @@ from scipy.ndimage.filters import convolve
 from scipy.special import gamma
 from torch import nn
 from torch.nn import functional as F
+import torch
+from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 
 class piq_metric(object):
@@ -56,6 +58,14 @@ class piq_ssim(piq_metric):
     def _metric(self, x, y):
         return piq.ssim(x, y)
 
+class piq_lpip(piq_metric):
+    def __init__(self, cfg):
+        # Initialize the LPIPS model once
+        self.lpips = LearnedPerceptualImagePatchSimilarity(net_type='vgg').to('cuda')
+    
+    def _metric(self, x, y):
+        # Compute the LPIPS score
+        return self.lpips(x, y)
 
 class piq_rmse(piq_metric):
     def __init__(self, cfg):
@@ -85,8 +95,8 @@ def _ergas_single_torch(raw_tensor: torch.Tensor,
     N_spectral = raw_tensor.shape[1]
 
     # Reshape images for processing
-    raw_tensor_reshaped = raw_tensor.view(N_spectral, -1)
-    dst_tensor_reshaped = dst_tensor.view(N_spectral, -1)
+    raw_tensor_reshaped = raw_tensor.reshape(N_spectral, -1)
+    dst_tensor_reshaped = dst_tensor.reshape(N_spectral, -1)
     N_pixels = raw_tensor_reshaped.shape[1]
 
     # Assuming HR size is 256x256 and LR size is 128x128
@@ -174,8 +184,8 @@ def _cc_single_torch(raw_tensor: torch.Tensor,
     N_spectral = raw_tensor.shape[1]
 
     # Reshaping fused and reference data
-    raw_tensor_reshaped = raw_tensor.view(N_spectral, -1)
-    dst_tensor_reshaped = dst_tensor.view(N_spectral, -1)
+    raw_tensor_reshaped = raw_tensor.reshape(N_spectral, -1)
+    dst_tensor_reshaped = dst_tensor.reshape(N_spectral, -1)
 
     # Calculating mean value
     mean_raw = torch.mean(raw_tensor_reshaped, 1).unsqueeze(1)
@@ -255,8 +265,8 @@ def _sam_single_torch(raw_tensor: torch.Tensor,
     N_spectral = raw_tensor.shape[1]
 
     # Reshape fused and reference data
-    raw_tensor_reshaped = raw_tensor.view(N_spectral, -1)
-    dst_tensor_reshaped = dst_tensor.view(N_spectral, -1)
+    raw_tensor_reshaped = raw_tensor.reshape(N_spectral, -1)
+    dst_tensor_reshaped = dst_tensor.reshape(N_spectral, -1)
     N_pixels = raw_tensor_reshaped.shape[1]
 
     # Calculate the inner product
@@ -315,3 +325,5 @@ class SAM(nn.Module):
         """
         sam_metrics = _sam_single_torch(raw_tensor, dst_tensor)
         return sam_metrics
+
+

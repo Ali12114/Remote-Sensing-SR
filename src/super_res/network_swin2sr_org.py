@@ -14,143 +14,10 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
-from .utils import window_reverse, Mlp, window_partition
-from .HFM import one_module
-
-def default_conv(in_channels, out_channels, kernel_size,stride=1, bias=True):
-    return nn.Conv2d(
-        in_channels, out_channels, kernel_size,
-        padding=(kernel_size//2),stride=stride, bias=bias)
+from super_res.utils import window_reverse, Mlp, window_partition
+from super_res.moe import MoE
 
 
-class BasicBlock(nn.Sequential):
-    def __init__(
-        self, conv, in_channels, out_channels, kernel_size, stride=1, bias=True,
-        bn=False, act=nn.PReLU()):
-
-        m = [conv(in_channels, out_channels, kernel_size, bias=bias)]
-        if bn:
-            m.append(nn.BatchNorm2d(out_channels))
-        if act is not None:
-            m.append(act)
-
-        super(BasicBlock, self).__init__(*m)
-
-
-def batched_index_select(values, indices):
-    last_dim = values.shape[-1]
-    return values.gather(1, indices[:, :, None].expand(-1, -1, last_dim))
-
-class NonLocalSparseAttention(nn.Module):
-    def __init__( self, n_hashes=4, channels=64, k_size=3, reduction=4, chunk_size=144, res_scale=1):
-        super(NonLocalSparseAttention,self).__init__()
-        self.chunk_size = chunk_size
-        self.n_hashes = n_hashes
-        self.reduction = reduction
-        self.res_scale = res_scale
-        self.conv_match = BasicBlock(default_conv, channels, channels//reduction, k_size, bn=False, act=None)
-        self.conv_assembly = BasicBlock(default_conv, channels, channels, 1, bn=False, act=None)
-
-    def LSH(self, hash_buckets, x):
-        #x: [N,H*W,C]
-        N = x.shape[0]
-        device = x.device
-        
-        #generate random rotation matrix
-        rotations_shape = (1, x.shape[-1], self.n_hashes, hash_buckets//2) #[1,C,n_hashes,hash_buckets//2]
-        random_rotations = torch.randn(rotations_shape, dtype=x.dtype, device=device).expand(N, -1, -1, -1) #[N, C, n_hashes, hash_buckets//2]
-        
-        #locality sensitive hashing
-        rotated_vecs = torch.einsum('btf,bfhi->bhti', x, random_rotations) #[N, n_hashes, H*W, hash_buckets//2]
-        rotated_vecs = torch.cat([rotated_vecs, -rotated_vecs], dim=-1) #[N, n_hashes, H*W, hash_buckets]
-        
-        #get hash codes
-        hash_codes = torch.argmax(rotated_vecs, dim=-1) #[N,n_hashes,H*W]
-        
-        #add offsets to avoid hash codes overlapping between hash rounds 
-        offsets = torch.arange(self.n_hashes, device=device) 
-        offsets = torch.reshape(offsets * hash_buckets, (1, -1, 1))
-        hash_codes = torch.reshape(hash_codes + offsets, (N, -1,)) #[N,n_hashes*H*W]
-     
-        return hash_codes 
-    
-    def add_adjacent_buckets(self, x):
-            x_extra_back = torch.cat([x[:,:,-1:, ...], x[:,:,:-1, ...]], dim=2)
-            x_extra_forward = torch.cat([x[:,:,1:, ...], x[:,:,:1,...]], dim=2)
-            return torch.cat([x, x_extra_back,x_extra_forward], dim=3)
-
-    def forward(self, input):
-        
-        N,_,H,W = input.shape
-        x_embed = self.conv_match(input).view(N,-1,H*W).contiguous().permute(0,2,1)
-        y_embed = self.conv_assembly(input).view(N,-1,H*W).contiguous().permute(0,2,1)
-        L,C = x_embed.shape[-2:]
-
-        #number of hash buckets/hash bits
-        hash_buckets = min(L//self.chunk_size + (L//self.chunk_size)%2, 128)
-        
-        #get assigned hash codes/bucket number         
-        hash_codes = self.LSH(hash_buckets, x_embed) #[N,n_hashes*H*W]
-        hash_codes = hash_codes.detach()
-
-        #group elements with same hash code by sorting
-        _, indices = hash_codes.sort(dim=-1) #[N,n_hashes*H*W]
-        _, undo_sort = indices.sort(dim=-1) #undo_sort to recover original order
-        mod_indices = (indices % L) #now range from (0->H*W)
-        x_embed_sorted = batched_index_select(x_embed, mod_indices) #[N,n_hashes*H*W,C]
-        y_embed_sorted = batched_index_select(y_embed, mod_indices) #[N,n_hashes*H*W,C]
-        
-        #pad the embedding if it cannot be divided by chunk_size
-        padding = self.chunk_size - L%self.chunk_size if L%self.chunk_size!=0 else 0
-        x_att_buckets = torch.reshape(x_embed_sorted, (N, self.n_hashes,-1, C)) #[N, n_hashes, H*W,C]
-        y_att_buckets = torch.reshape(y_embed_sorted, (N, self.n_hashes,-1, C*self.reduction)) 
-        if padding:
-            pad_x = x_att_buckets[:,:,-padding:,:].clone()
-            pad_y = y_att_buckets[:,:,-padding:,:].clone()
-            x_att_buckets = torch.cat([x_att_buckets,pad_x],dim=2)
-            y_att_buckets = torch.cat([y_att_buckets,pad_y],dim=2)
-        
-        x_att_buckets = torch.reshape(x_att_buckets,(N,self.n_hashes,-1,self.chunk_size,C)) #[N, n_hashes, num_chunks, chunk_size, C]
-        y_att_buckets = torch.reshape(y_att_buckets,(N,self.n_hashes,-1,self.chunk_size, C*self.reduction))
-        
-        x_match = F.normalize(x_att_buckets, p=2, dim=-1,eps=5e-5)
-
-        #allow attend to adjacent buckets
-        x_match = self.add_adjacent_buckets(x_match)
-        y_att_buckets = self.add_adjacent_buckets(y_att_buckets)
-        
-        #unormalized attention score
-        raw_score = torch.einsum('bhkie,bhkje->bhkij', x_att_buckets, x_match) #[N, n_hashes, num_chunks, chunk_size, chunk_size*3]
-        
-        #softmax
-        bucket_score = torch.logsumexp(raw_score, dim=-1, keepdim=True)
-        score = torch.exp(raw_score - bucket_score) #(after softmax)
-        bucket_score = torch.reshape(bucket_score,[N,self.n_hashes,-1])
-        
-        #attention
-        ret = torch.einsum('bukij,bukje->bukie', score, y_att_buckets) #[N, n_hashes, num_chunks, chunk_size, C]
-        ret = torch.reshape(ret,(N,self.n_hashes,-1,C*self.reduction))
-        
-        #if padded, then remove extra elements
-        if padding:
-            ret = ret[:,:,:-padding,:].clone()
-            bucket_score = bucket_score[:,:,:-padding].clone()
-         
-        #recover the original order
-        ret = torch.reshape(ret, (N, -1, C*self.reduction)) #[N, n_hashes*H*W,C]
-        bucket_score = torch.reshape(bucket_score, (N, -1,)) #[N,n_hashes*H*W]
-        ret = batched_index_select(ret, undo_sort)#[N, n_hashes*H*W,C]
-        bucket_score = bucket_score.gather(1, undo_sort)#[N,n_hashes*H*W]
-        
-        #weighted sum multi-round attention
-        ret = torch.reshape(ret, (N, self.n_hashes, L, C*self.reduction)) #[N, n_hashes*H*W,C]
-        bucket_score = torch.reshape(bucket_score, (N, self.n_hashes, L, 1))
-        probs = nn.functional.softmax(bucket_score,dim=1)
-        ret = torch.sum(ret * probs, dim=1)
-        
-        ret = ret.permute(0,2,1).view(N,-1,H,W).contiguous()*self.res_scale+input
-        return ret
-    
 class WindowAttention(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
@@ -258,7 +125,6 @@ class WindowAttention(nn.Module):
             self.get_v = nn.Conv2d(
                 dim, dim, kernel_size=3, stride=1, padding=1, groups=dim)
 
-
     def forward(self, x, mask=None):
         """
         Args:
@@ -341,40 +207,7 @@ class WindowAttention(nn.Module):
         # x = self.proj(x)
         flops += N * self.dim * self.dim
         return flops
-class ChannelAttention(nn.Module):
-    """Channel attention used in RCAN.
-    Args:
-        num_feat (int): Channel number of intermediate features.
-        squeeze_factor (int): Channel squeeze factor. Default: 16.
-    """
 
-    def __init__(self, num_feat, squeeze_factor=16):
-        super(ChannelAttention, self).__init__()
-        self.attention = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(num_feat, num_feat // squeeze_factor, 1, padding=0),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(num_feat // squeeze_factor, num_feat, 1, padding=0),
-            nn.Sigmoid())
-
-    def forward(self, x):
-        y = self.attention(x)
-        return x * y
-    
-class CAB(nn.Module):
-
-    def __init__(self, num_feat, compress_ratio=3, squeeze_factor=30):
-        super(CAB, self).__init__()
-
-        self.cab = nn.Sequential(
-            nn.Conv2d(num_feat, num_feat // compress_ratio, 3, 1, 1),
-            nn.GELU(),
-            nn.Conv2d(num_feat // compress_ratio, num_feat, 3, 1, 1),
-            ChannelAttention(num_feat, squeeze_factor)
-            )
-
-    def forward(self, x):
-        return self.cab(x)
 
 class SwinTransformerBlock(nn.Module):
     r""" Swin Transformer Block.
@@ -422,8 +255,6 @@ class SwinTransformerBlock(nn.Module):
             use_lepe=use_lepe,
             use_cpb_bias=use_cpb_bias,
             use_rpe_bias=use_rpe_bias)
-        
-        self.conv_block = CAB(num_feat=dim, compress_ratio=3, squeeze_factor=30)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -478,10 +309,6 @@ class SwinTransformerBlock(nn.Module):
         shortcut = x
         x = x.view(B, H, W, C)
 
-        # Conv_x
-        conv_x = self.conv_block(x.permute(0, 3, 1, 2))
-        conv_x = conv_x.permute(0, 2, 3, 1).contiguous().view(B, H * W, C)
-
         # cyclic shift
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
@@ -508,9 +335,7 @@ class SwinTransformerBlock(nn.Module):
         else:
             x = shifted_x
         x = x.view(B, H * W, C)
-
-        
-        x = shortcut + self.drop_path(self.norm1(x)) + conv_x 
+        x = shortcut + self.drop_path(self.norm1(x))
 
         # FFN
 
@@ -637,7 +462,7 @@ class BasicLayer(nn.Module):
                                  pretrained_window_size=pretrained_window_size,
                                  use_lepe=use_lepe,
                                  use_cpb_bias=use_cpb_bias,
-                                 MoE_config=None,
+                                 MoE_config=MoE_config,
                                  use_rpe_bias=use_rpe_bias)
             for i in range(depth)])
 
@@ -757,7 +582,6 @@ class RSTB(nn.Module):
                  use_lepe=False,
                  use_cpb_bias=True,
                  MoE_config=None,
-                #  MoE_config=None,
                  use_rpe_bias=False):
         super(RSTB, self).__init__()
 
@@ -778,22 +602,18 @@ class RSTB(nn.Module):
                                          use_checkpoint=use_checkpoint,
                                          use_lepe=use_lepe,
                                          use_cpb_bias=use_cpb_bias,
-                                         MoE_config=None,
+                                         MoE_config=MoE_config,
                                          use_rpe_bias=use_rpe_bias
                                          )
 
         if resi_connection == '1conv':
             self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
- 
         elif resi_connection == '3conv':
             # to save parameters and memory
-            self.conv = nn.Sequential(nn.Conv2d(dim, dim // 4, 3, 1, 1),
-
+            self.conv = nn.Sequential(nn.Conv2d(dim, dim // 4, 3, 1, 1), nn.LeakyReLU(negative_slope=0.2, inplace=True),
                                       nn.Conv2d(dim // 4, dim // 4, 1, 1, 0),
-     
                                       nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                                      nn.Conv2d(dim // 4, dim, 3, 1, 1)),
-           
+                                      nn.Conv2d(dim // 4, dim, 3, 1, 1))
 
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=dim, embed_dim=dim,
@@ -936,7 +756,6 @@ class ResidualBlock(nn.Module):
         padding = kernel_size // 2
         self.block = nn.Sequential(
             nn.Conv2d(in_channels=channel_size, out_channels=channel_size, kernel_size=kernel_size, padding=padding),
-
             nn.PReLU(),
             nn.Conv2d(in_channels=channel_size, out_channels=channel_size, kernel_size=kernel_size, padding=padding),
             nn.PReLU()
@@ -994,86 +813,6 @@ class Encoder(nn.Module):
         x = self.final(x)
         return x
 
-class Attention(nn.Module):
-
-    def __init__(self, embed_dim, fft_norm="ortho"):
-        # bn_layer not used
-        super(Attention, self).__init__()
-        self.conv_layer1 = torch.nn.Conv2d(embed_dim, embed_dim // 2, 1, 1, 0)
-        self.conv_layer2 = torch.nn.Conv2d(embed_dim // 2, embed_dim // 2, 1, 1, 0)
-        self.conv_layer3 = torch.nn.Conv2d(embed_dim // 2, embed_dim, 1, 1, 0)
-        self.relu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
-        self.fft_norm = fft_norm
-
-    def forward(self, x):
-        fft_dim = (-2, -1)
-        ffted = torch.fft.rfftn(x, dim=fft_dim, norm=self.fft_norm)
-        real = ffted.real + self.conv_layer3(
-            self.relu(self.conv_layer2(self.relu(self.conv_layer1(ffted.real))))
-        )
-        imag = ffted.imag + self.conv_layer3(
-            self.relu(self.conv_layer2(self.relu(self.conv_layer1(ffted.imag))))
-        )
-        ffted = torch.complex(real, imag)
-
-        ifft_shape_slice = x.shape[-2:]
-
-        output = torch.fft.irfftn(
-            ffted, s=ifft_shape_slice, dim=fft_dim, norm=self.fft_norm
-        )
-
-        return x * output
-
-#####################################
-# Addition on shallow feature extractor for extracting shallow features written by CHATGPT-o1 preview
-#####################################
-class SpectralAttention(nn.Module):
-    def __init__(self, in_channels, reduction=8):
-        super(SpectralAttention, self).__init__()
-        # Spectral attention mechanism
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)  # Pool over spatial dimensions
-        self.fc = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels // reduction, 1, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels // reduction, in_channels, 1, bias=False),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        # x: (batch_size, channels, height, width)
-        y = self.avg_pool(x)   # (batch_size, channels, 1, 1)
-        y = self.fc(y)         # (batch_size, channels, 1, 1)
-        return x * y           # Element-wise multiplication
-
-class MultispectralFeatureExtractor(nn.Module):
-    def __init__(self, in_channels=13, out_channels=96, use_spectral_attention=True):
-        super(MultispectralFeatureExtractor, self).__init__()
-        self.use_spectral_attention = use_spectral_attention
-
-        if self.use_spectral_attention:
-            self.spectral_attention = SpectralAttention(in_channels)
-
-        # 3D Convolutional Layer
-        self.conv3d = nn.Conv3d(
-            in_channels=1,             # After unsqueezing, treat spectral bands as depth
-            out_channels=out_channels,
-            kernel_size=(in_channels, 3, 3),  # Kernel spans all spectral bands
-            stride=(1, 1, 1),
-            padding=(0, 1, 1),         # No padding in spectral dimension
-            bias=False
-        )
-        self.activation = nn.ReLU(inplace=True)
-
-    def forward(self, x):
-        # x: (batch_size, in_channels, height, width)
-        if self.use_spectral_attention:
-            x = self.spectral_attention(x)
-        x = x.unsqueeze(1)  # (batch_size, 1, in_channels, height, width)
-        x = self.conv3d(x)  # (batch_size, out_channels, 1, height, width)
-        x = self.activation(x)
-        x = x.squeeze(2)    # Remove the spectral dimension (singleton)
-        return x            # Output: (batch_size, out_channels, height, width)
-
 
 
 class Swin2SR(nn.Module):
@@ -1103,7 +842,7 @@ class Swin2SR(nn.Module):
         resi_connection: The convolutional block before residual connection. '1conv'/'3conv'
     """
 
-    def __init__(self, img_size=64, patch_size=1, in_chans=13,
+    def __init__(self, img_size=64, patch_size=1, in_chans=3,
                  embed_dim=96, depths=[6, 6, 6, 6], num_heads=[6, 6, 6, 6],
                  window_size=7, mlp_ratio=4., qkv_bias=True,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -1115,8 +854,9 @@ class Swin2SR(nn.Module):
                  use_rpe_bias=False,
                  **kwargs):
         super(Swin2SR, self).__init__()
-        print('==== SWIN 2SR With High Frequency Block')
-        num_in_ch = 13
+        print('==== SWIN 2SR With Encoder')
+        num_in_ch = in_chans
+        # num_out_ch = in_chans
         num_out_ch = 3
         num_feat = 64
         self.img_range = img_range
@@ -1133,6 +873,7 @@ class Swin2SR(nn.Module):
         #####################################################################################################
         ################################### 1, shallow feature extraction ###################################
         self.conv_first = nn.Conv2d(num_in_ch, embed_dim, 3, 1, 1)
+        # self.conv_first = Encoder(in_chans, num_layers=2, kernel_size=3, channel_size=embed_dim)
 
         #####################################################################################################
         ################################### 2, deep feature extraction ######################################
@@ -1142,7 +883,6 @@ class Swin2SR(nn.Module):
         self.patch_norm = patch_norm
         self.num_features = embed_dim
         self.mlp_ratio = mlp_ratio
-
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
@@ -1167,20 +907,6 @@ class Swin2SR(nn.Module):
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
-        self.nlsa1 = NonLocalSparseAttention(channels=embed_dim, chunk_size=36, n_hashes=3, reduction=3, res_scale=1)
-        self.nlsa2 = NonLocalSparseAttention(channels=embed_dim, chunk_size=36, n_hashes=3, reduction=3, res_scale=1)
-
-        # Layer Normalization
-        self.layer_norm = nn.LayerNorm(embed_dim)
-        # High Frequency Module
-        # https://openaccess.thecvf.com/content/CVPR2022W/NTIRE/papers/Lu_Transformer_for_Single_Image_Super-Resolution_CVPRW_2022_paper.pdf
-        self.layers_hfm = nn.ModuleList()
-
-        for i_layer in range(2):
-            layer = one_module(embed_dim)
-            self.layers_hfm.append(layer)
-        
-
         # build Residual Swin Transformer blocks (RSTB)
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
@@ -1202,7 +928,7 @@ class Swin2SR(nn.Module):
                          resi_connection=resi_connection,
                          use_lepe=use_lepe,
                          use_cpb_bias=use_cpb_bias,
-                         MoE_config=None,
+                         MoE_config=MoE_config,
                          use_rpe_bias=use_rpe_bias,
                          )
             self.layers.append(layer)
@@ -1228,20 +954,16 @@ class Swin2SR(nn.Module):
                              resi_connection=resi_connection,
                              use_lepe=use_lepe,
                              use_cpb_bias=use_cpb_bias,
-                             MoE_config=None,
+                             MoE_config=MoE_config,
                              use_rpe_bias=use_rpe_bias
                              )
                 self.layers_hf.append(layer)
 
         self.norm = norm_layer(self.num_features)
 
-        self.nlsa3 = NonLocalSparseAttention(channels=embed_dim, chunk_size=36, n_hashes=3, reduction=3, res_scale=1)
-        self.nlsa4 = NonLocalSparseAttention(channels=embed_dim, chunk_size=36, n_hashes=3, reduction=3, res_scale=1)
-
         # build the last conv layer in deep feature extraction
         if resi_connection == '1conv':
             self.conv_after_body = nn.Conv2d(embed_dim, embed_dim, 3, 1, 1)
-
         elif resi_connection == '3conv':
             # to save parameters and memory
             self.conv_after_body = nn.Sequential(nn.Conv2d(embed_dim, embed_dim // 4, 3, 1, 1),
@@ -1402,18 +1124,12 @@ class Swin2SR(nn.Module):
             # for classical SR
             x = self.conv_first(x)
 
-
-            nlsa_st = self.nlsa2(self.nlsa1(x))
-            for layer in self.layers_hfm:
-                x = layer(nlsa_st)
-
             res = self.forward_features(x)
             if not torch.is_tensor(res):
                 res, loss_moe = res
 
             x = self.conv_after_body(res) + x
-            nlsa_fn = self.nlsa4(self.nlsa3(x))
-            x = self.conv_before_upsample(nlsa_fn)
+            x = self.conv_before_upsample(x)
             x = self.conv_last(self.upsample(x))
         elif self.upsampler == 'pixelshuffle_aux':
             bicubic = F.interpolate(x, size=(H * self.upscale, W * self.upscale), mode='bicubic', align_corners=False)
@@ -1527,4 +1243,3 @@ if __name__ == '__main__':
     x = torch.randn((1, 3, height, width))
     x = model(x)
     print(x[0].shape)
-

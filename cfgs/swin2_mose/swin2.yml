@@ -1,0 +1,137 @@
+{
+    'batch_size': 8,
+    'dataset': {
+        'root_path': '/sr_data2/train_21k',
+        'stats': {
+            'use_minmax': True,
+            'tensor_05m_b5b6b7b8a': {
+                'mean': [
+                    1182.8475341796875,
+                    2155.208251953125,
+                    2507.487060546875,
+                    2800.94140625
+                ],
+                'std': [
+                    594.6590576171875,
+                    643.8070068359375,
+                    777.8865356445312,
+                    829.2948608398438
+                ],
+                'min': [
+                    -8687.0,
+                    -3340.0,
+                    -2245.0,
+                    -5048.0
+                ],
+                'max': [
+                    20197.0,
+                    16498.0,
+                    16674.0,
+                    21622.0
+                ]
+            },
+            'tensor_20m_b5b6b7b8a': {
+                'mean': [
+                    1180.6920166015625,
+                    2149.5302734375,
+                    2500.98779296875,
+                    2794.01220703125
+                ],
+                'std': [
+                    592.2827758789062,
+                    639.0105590820312,
+                    769.7623291015625,
+                    819.83349609375
+                ],
+                'min': [
+                    -446.0,
+                    -295.0,
+                    -340.0,
+                    -551.0
+                ],
+                'max': [
+                    13375.0,
+                    15898.0,
+                    15551.0,
+                    15079.0
+                ]
+            }
+        },
+        'collate_fn': 'mods.v6.collate_fn',
+        'denorm': 'mods.v6.uncollate_fn',
+        'printable': 'mods.v6.printable',
+        'hr_name': None,
+        'lr_name': None,
+        'load_dataset': 'datasets.oli2msi.load_dataset'
+    },
+    'optim': {
+        'learning_rate': 0.0001,
+        'model_betas': [0.9, 0.999],
+        'model_eps': 1e-08,
+        'model_weight_decay': 0
+    },
+    'super_res': {
+        'version': 'v2',
+        'model': {
+            'depths': [6, 6, 6, 6],
+            'embed_dim': 90,
+            'img_range': 1.0,
+            'img_size': 64,
+            'in_chans': 13,
+            'mlp_ratio': 1,
+            'num_heads': [6, 6, 6, 6],
+            'resi_connection': '1conv',
+            'upsampler': 'pixelshuffle',
+            'window_size': 16,
+            'upscale': 4,
+            'use_lepe': True,
+            'use_cpb_bias': False,
+            'use_rpe_bias': True,
+            'MoE_config': {
+                'k': 2,
+                'num_experts': 8,
+                'with_noise': False,
+                'with_smart_merger': 'v1'
+            }
+        }
+    },
+    'train': 'super_res.training.train',
+    'mean_std': 'mods.v3.get_mean_std',
+    'visualize': {
+        'checkpoint': 'chk_loader.load_state_dict_model_only',
+        'model': 'super_res.model.build_model',
+        'input_shape': [4, 64, 64]
+    },
+    'metrics': {
+        'only_test_y_channel': False,
+        'upscale_factor': 4
+    },
+    '__base__': 'sen2venus_4x_s2m.yml',
+    'losses': {
+        'with_pixel_criterion': False,
+        'with_ssim_criterion': True,
+        'with_perceptual_criterion': False,
+        'with_swt_criterion': True,
+        'with_cc_criterion': True,
+        'weights': {
+            'ssim': 1,
+            'perceptual': 0.2,
+            'swt': 1.0,
+            'cc': 1.0,
+            'moe': 0.2
+        }
+    },
+    'config': '/home/ali/swin2/cfgs/swin2_mose/oli2msi_3x_s2m.yml',
+    'phase': 'train',
+    'seed': 123,
+    'num_workers': 0,
+    'output': '/home/ali/swin2/output/LR-HR-MS',
+    'epoch': -1,
+    'epochs': 100,
+    'snapshot_interval': 1,
+    'num_images': 10,
+    'eval_method': None,
+    'repeat_times': 1000,
+    'warm_times': 10,
+    'dpi': 2400
+}

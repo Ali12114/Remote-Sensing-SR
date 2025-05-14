@@ -364,8 +364,8 @@ class SwinFIR(nn.Module):
                  **kwargs):
         super(SwinFIR, self).__init__()
         print('==== SWIN FIR')
-        num_in_ch = in_chans
-        num_out_ch = in_chans
+        num_in_ch = 13
+        num_out_ch = 3
         num_feat = 64
         self.img_range = img_range
         if in_chans == 3:

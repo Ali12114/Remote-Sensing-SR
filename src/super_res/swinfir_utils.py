@@ -1,14 +1,8 @@
-#
-# Source code: https://github.com/Zdafeng/SwinFIR
-# Paper: https://arxiv.org/pdf/2208.11247v3.pdf
-#
-
 import math
 import torch
 import torch.nn as nn
-
 from einops import rearrange
-from timm.models.layers import to_2tuple, trunc_normal_
+from basicsr.archs.arch_util import to_2tuple, trunc_normal_
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):

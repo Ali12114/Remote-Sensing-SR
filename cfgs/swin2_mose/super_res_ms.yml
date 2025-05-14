@@ -1,6 +1,6 @@
-__base__: sen2venus_exp4_v5.yml
+__base__: sen2venus_4x_s2m.yml
 dataset:
-  root_path: data/oli2msi
+  root_path: /sr_data2/train_21k
   collate_fn: mods.v6.collate_fn
   denorm: mods.v6.uncollate_fn
   printable: mods.v6.printable
@@ -9,10 +9,10 @@ dataset:
   lr_name: null
 super_res: {
   model: {
-    upscale: 3,
-    in_chans: 3,
+    upscale: 4,
+    in_chans: 13,
   }
 }
 metrics: {
-  upscale_factor: 3,
+  upscale_factor: 4,
 }

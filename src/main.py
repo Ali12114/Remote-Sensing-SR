@@ -13,7 +13,7 @@ def parse_configs():
     parser = argparse.ArgumentParser(description='SuperRes model')
     # For training and testing
     parser.add_argument('--config',
-                        default="cfgs/sen2venus_v26_8.yml",
+                        default="/cfgs/swin2_mose/oli2msi_3x_s2m.yml",
                         help='Configuration file.')
     parser.add_argument('--phase',
                         default='train',
@@ -89,6 +89,8 @@ def main(cfg):
     if cfg.phase == 'avg_time':
         print(measure_avg_time(cfg))
     elif cfg.phase == 'train':
+        cfg['batch_size'] = 4
+
         train_fun = load_fun(cfg.get('train', 'srgan.training.train'))
         train_dloader, val_dloader, _ = load_dataset_fun(cfg)
         train_fun = load_fun(cfg.get('train', 'srgan.training.train'))
@@ -121,7 +123,39 @@ def main(cfg):
 if __name__ == "__main__":
     # parse input arguments
     cfg = parse_configs()
-    # fix random seed
+    cfg.losses = {
+                'with_pixel_criterion': False,
+                'with_ssim_criterion': True,
+                'with_perceptual_criterion': False,
+                'with_swt_criterion': True,
+                'with_cc_criterion': True,
+                'weights': {
+                    'ssim': 1,
+                    'perceptual': 0.2,
+                    'swt': 1.0,
+                    'cc': 1.0,
+                    'moe': 0.2
+                }
+            }
+    # cfg.super_res.model.num_heads = [6, 6, 6, 6, 6, 6]
+    # cfg.super_res.model.depths = [6, 6, 6, 6, 6, 6]
+    # cfg.super_res.model.mlp_ratio = 2
+    # cfg.super_res.version = 'v1'
+    # cfg.super_res.model.window_size = 10
+    # cfg.super_res.model.img_size = 100
+    cfg.super_res.model.upsampler = 'pixelshuffle'
+    cfg.super_res.model.in_chans = 13
+    # fix random seedcl
     set_deterministic(cfg.seed)
+    # print(cfg.super_res.model.use_cpb_bias)
+
+        # **Add Pretrained Model Configuration**
+    # cfg.pretrained_model = {
+    #     'path': "/home/ali/swin2/pretrained_models/swinv2_large_patch4_window12_192_22k.pth",  # Update this path
+    #     'strict': False  # Allows loading with mismatched layers
+    # }
+
+    print(cfg)
+
     # run main
     main(cfg)

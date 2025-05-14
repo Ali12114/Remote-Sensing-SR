@@ -8,7 +8,7 @@ from collections import OrderedDict
 
 from utils import AverageMeter, load_fun
 from metrics import CC, SAM, ERGAS, piq_psnr, piq_ssim, \
-    piq_rmse
+    piq_rmse, piq_lpip
 from chk_loader import load_checkpoint
 
 
@@ -73,6 +73,7 @@ def build_eval_metrics(cfg):
         'ssim_model': piq_ssim(cfg),
         'cc_model': CC(),
         'rmse_model': piq_rmse(cfg),
+        "lpip_model": piq_lpip(cfg),
         'sam_model': SAM(),
         'ergas_model': ERGAS(),
     }
@@ -89,6 +90,7 @@ def build_avg_metrics():
         ('ssim_model', AverageMeter("PIQ_SSIM", ":4.4f")),
         ('cc_model', AverageMeter("CC", ":4.4f")),
         ('rmse_model', AverageMeter("PIQ_RMSE", ":4.4f")),
+        ('lpip_model', AverageMeter("PIQ_LPIP", ":4.4f")),
         ('sam_model', AverageMeter("SAM", ":4.4f")),
         ('ergas_model', AverageMeter("ERGAS", ":4.4f")),
     ])

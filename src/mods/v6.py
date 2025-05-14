@@ -6,16 +6,17 @@ from tqdm import tqdm
 
 
 def collate_fn(cfg):
-
     def f(batch):
+        # Use default_collate to handle dictionary-based items
         batch = default_collate(batch)
+        
+        # Extract lr, hr, and file_name, converting to float tensors
+        lr = batch['lr'].float()
+        hr = batch['hr'].float()
+        file_names = batch['file_name']  # Keep as-is for filenames
 
-        lr = batch[0].float()
-        hr = batch[1].float()
-
-        return {'lr': lr, 'hr': hr}
+        return {'lr': lr, 'hr': hr, 'file_name': file_names}
     return f
-
 
 def uncollate_fn(cfg, hr_name, lr_name):
     def to_shape(t1, t2):
