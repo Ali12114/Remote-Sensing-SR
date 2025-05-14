@@ -63,7 +63,7 @@ output/LR-HR-OUR21K-13B4xv1/
     └── results-100.pt
 ```
 
-### Swin2-MoSE best configuration
+### Best configuration
 
 ```bash
 # S2 4x
