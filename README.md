@@ -89,9 +89,12 @@ python src/main.py --phase vis --config $CONFIG_FILE --output $OUT_DIR --num_ima
 ```
 
 [Swin2SR](https://link.springer.com/chapter/10.1007/978-3-031-25063-7_42)  
+
 [Transformer for SISR](https://github.com/luissen/ESRT)
+
 [WAT](https://github.com/mandalinadagi/Wavelettention)
 
+[SWIN2-MOSE](https://github.com/IMPLabUniPr/swin2-mose)
 ## License
 
 See [GPL v2](./LICENSE) License.
