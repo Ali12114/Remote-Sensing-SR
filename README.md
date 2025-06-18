@@ -11,8 +11,9 @@ Single-Image Super-Resolution for Remote Sensing.
 
 ```bash
 $ git clone https://github.com/Ali12114/Remote-Sensing-SR.git
-$ conda env create -n enhanced_swin2 --file environment.yml
-Or check the requirements.txt file for all dependencies
+$ conda create -n enhance_swin2 python=3.10  # or your desired version
+$ conda activate enhance_swin2
+$ pip install -r requirements.txt
 $ conda activate enhanced_swin2
 ```
 
@@ -67,7 +68,7 @@ output/LR-HR-OUR21K-13B4xv1/
 
 ```bash
 # S2 4x
-CONFIG_FILE=cfgs/enhanced_swin2/super_res_ms.yml
+CONFIG_FILE=cfgs/swin2_mose/super_res_ms.yml
 ```
 
 ### Train
